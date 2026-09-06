@@ -1,7 +1,7 @@
 from app.agents.operations_investigator import OperationsInvestigator
 from app.agents.weather_investigator import WeatherInvestigator
 from app.graph.state import InvestigationState
-
+from app.agents.verification_agent import VerificationAgent
 from app.agents.analysis_agent import AnalysisAgent
 def investigate_operations(
     state: InvestigationState
@@ -58,4 +58,28 @@ def analyze_evidence(
 
     return {
         "analysis_assessment": assessment
+    }
+
+
+
+
+
+def verify_analysis(
+    state: InvestigationState
+) -> dict:
+    """
+    Verifies whether the generated analysis is
+    adequately supported by the available evidence.
+    """
+
+    verifier = VerificationAgent()
+
+    assessment = verifier.verify(
+        operations=state["operations_assessment"],
+        weather=state["weather_assessment"],
+        analysis=state["analysis_assessment"],
+    )
+
+    return {
+        "verification_assessment": assessment
     }

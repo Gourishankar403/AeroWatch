@@ -12,6 +12,7 @@ from app.graph.nodes import (
     investigate_operations,
     investigate_weather,
     analyze_evidence,
+    verify_analysis,
 )
 
 
@@ -32,6 +33,11 @@ def build_investigation_graph():
         investigate_weather
     )
 
+    workflow.add_node(
+        "verification",
+        verify_analysis
+    )
+
 
     workflow.add_node(
     "analysis",
@@ -43,7 +49,10 @@ def build_investigation_graph():
     workflow.add_edge("operations", "analysis")
     workflow.add_edge("weather", "analysis")
 
-    workflow.add_edge("analysis", END)
+    workflow.add_edge("analysis", "verification")
+
+    workflow.add_edge("analysis","verification")
+    
 
 
     return workflow.compile()
