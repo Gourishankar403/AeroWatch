@@ -1,18 +1,18 @@
 from langgraph.graph import StateGraph,START,END
 
-
 from app.graph.state import InvestigationState
 
 
 from app.graph.nodes import(
-    investigate_operations,
-    investigate_weather
-
+    investigate_weather,
+    investigate_operations
 )
 
 
 def build_investigation_graph():
-    """builds the initial aerowatch investigation workflow"""
+    """Builds the AeroWatch investigation workflow.
+    Independent investigations are executed in parallel"""
+
 
     workflow=StateGraph(InvestigationState)
 
@@ -24,26 +24,15 @@ def build_investigation_graph():
     workflow.add_node(
         "weather",
         investigate_weather
-
     )
 
-    workflow.add_edge(
-        START,
-        "operations"
+    workflow.add_edge(START,"operations")
+    workflow.add_edge(START,"weather")
 
-    )
-
-    workflow.add_edge(
-        "operations",
-        "weather"
-
-    )
-
-    workflow.add_edge(
-        "weather",
-        END
-    )
+    workflow.add_edge("operations",END)
+    workflow.add_edge("weather",END)
 
 
     return workflow.compile()
+
 
