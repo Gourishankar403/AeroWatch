@@ -17,6 +17,10 @@ initial_state = {
 
     "verification_assessment": None,
 
+    "revision_count": 0,
+
+    "max_revisions": 2,
+
     "investigation_complete": False,
 }
 

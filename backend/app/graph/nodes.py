@@ -3,6 +3,9 @@ from app.agents.weather_investigator import WeatherInvestigator
 from app.graph.state import InvestigationState
 from app.agents.verification_agent import VerificationAgent
 from app.agents.analysis_agent import AnalysisAgent
+from app.agents.revision_agent import RevisionAgent
+from app.agents.revision_agent import RevisionAgent
+
 def investigate_operations(
     state: InvestigationState
 ) -> dict:
@@ -83,3 +86,50 @@ def verify_analysis(
     return {
         "verification_assessment": assessment
     }
+
+
+def revise_analysis(
+    state: InvestigationState
+) -> dict:
+    """
+    Revises the analysis when the verification
+    agent identifies evidence-grounding issues.
+    """
+
+    reviser = RevisionAgent()
+
+    revised_assessment = reviser.revise(
+        operations=state["operations_assessment"],
+        weather=state["weather_assessment"],
+        analysis=state["analysis_assessment"],
+        verification=state["verification_assessment"],
+    )
+
+    return {
+        "analysis_assessment": revised_assessment,
+        "revision_count": state["revision_count"] + 1,
+    }
+
+
+def revise_analysis(
+    state: InvestigationState
+) -> dict:
+    """
+    Revises the analysis when verification identifies
+    evidence-grounding or reasoning issues.
+    """
+
+    reviser = RevisionAgent()
+
+    revised_assessment = reviser.revise(
+        operations=state["operations_assessment"],
+        weather=state["weather_assessment"],
+        analysis=state["analysis_assessment"],
+        verification=state["verification_assessment"],
+    )
+
+    return {
+        "analysis_assessment": revised_assessment,
+        "revision_count": state["revision_count"] + 1,
+    }
+
