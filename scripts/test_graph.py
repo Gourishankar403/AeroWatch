@@ -9,6 +9,7 @@ initial_state = {
     "operations_assessment": None,
     "weather_assessment": None,
     "investigation_complete": False,
+    "analysis_assessment": None,
 }
 
 result = graph.invoke(initial_state)
@@ -26,5 +27,12 @@ print(
 print("\n--- WEATHER ---")
 print(
     result["weather_assessment"]
+    .model_dump_json(indent=2)
+)
+
+
+print("\n--- ANALYSIS ---")
+print(
+    result["analysis_assessment"]
     .model_dump_json(indent=2)
 )

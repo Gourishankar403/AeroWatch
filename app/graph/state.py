@@ -3,6 +3,8 @@ from typing import Optional, TypedDict
 from app.models.operations import OperationsAssessment
 from app.models.weather import WeatherAssessment
 
+from app.models.analysis import AnalysisAssessment
+
 
 class InvestigationState(TypedDict):
     """
@@ -17,3 +19,4 @@ class InvestigationState(TypedDict):
     weather_assessment: Optional[WeatherAssessment]
 
     investigation_complete: bool
+    analysis_assessment: Optional[AnalysisAssessment]

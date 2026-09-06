@@ -8,6 +8,12 @@ from app.graph.nodes import(
     investigate_operations
 )
 
+from app.graph.nodes import (
+    investigate_operations,
+    investigate_weather,
+    analyze_evidence,
+)
+
 
 def build_investigation_graph():
     """Builds the AeroWatch investigation workflow.
@@ -26,11 +32,18 @@ def build_investigation_graph():
         investigate_weather
     )
 
-    workflow.add_edge(START,"operations")
-    workflow.add_edge(START,"weather")
 
-    workflow.add_edge("operations",END)
-    workflow.add_edge("weather",END)
+    workflow.add_node(
+    "analysis",
+    analyze_evidence)
+
+    workflow.add_edge(START, "operations")
+    workflow.add_edge(START, "weather")
+
+    workflow.add_edge("operations", "analysis")
+    workflow.add_edge("weather", "analysis")
+
+    workflow.add_edge("analysis", END)
 
 
     return workflow.compile()
