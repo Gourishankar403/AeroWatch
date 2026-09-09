@@ -4,45 +4,66 @@ from app.models.weather import WeatherAssessment
 from app.models.verification import VerificationAssessment
 
 
-def _contains_positive_disruption_claim(text: str) -> bool:
+def _phrase_is_negated(
+    text: str,
+    phrase: str,
+) -> bool:
+    """
+    Check whether a phrase occurs in a clearly negated
+    context.
+
+    This is intentionally lightweight and deterministic.
+    It is not intended to be a full NLP parser.
+    """
+
+    index = text.find(phrase)
+
+    if index == -1:
+        return False
+
+    context_start = max(0, index - 100)
+    context = text[context_start:index]
+
+    negation_patterns = [
+        "no ",
+        "not ",
+        "does not ",
+        "do not ",
+        "did not ",
+        "without ",
+        "never ",
+        "neither ",
+        "cannot ",
+        "can't ",
+        "isn't ",
+        "is not ",
+        "wasn't ",
+        "was not ",
+        "were not ",
+        "are not ",
+        "there is no ",
+        "there was no ",
+        "doesn't ",
+        "didn't ",
+    ]
+
+    return any(
+        negation in context
+        for negation in negation_patterns
+    )
+
+
+def _contains_positive_disruption_claim(
+    text: str,
+) -> bool:
     """
     Detect whether the analysis positively claims that
     an operational disruption exists.
-
-    This intentionally avoids flagging negated statements such as:
-    - no operational disruption
-    - no evidence of an operational disruption
-    - no active operational disruption
-    - no disruption detected
-    - does not indicate an operational disruption
     """
-
-    negative_patterns = [
-        "no operational disruption",
-        "no evidence of an operational disruption",
-        "no active operational disruption",
-        "no airport disruption",
-        "no evidence of an airport disruption",
-        "no disruption is occurring",
-        "no disruption detected",
-        "does not indicate an operational disruption",
-        "does not indicate an airport disruption",
-        "without an operational disruption",
-        "without operational disruption",
-        "not experiencing an operational disruption",
-        "not operationally disrupted",
-        "no evidence of disruption",
-        "no active disruption",
-    ]
-
-    for pattern in negative_patterns:
-        if pattern in text:
-            return False
 
     positive_patterns = [
         "operational disruption is occurring",
         "an operational disruption is occurring",
-        "operational disruption is occurring",
         "airport disruption is occurring",
         "the airport is disrupted",
         "operations are disrupted",
@@ -55,19 +76,78 @@ def _contains_positive_disruption_claim(text: str) -> bool:
         "flight delays are occurring",
         "ground delay is active",
         "ground stop is active",
+        "active faa ground delay",
+        "active faa ground delay program",
     ]
 
-    return any(pattern in text for pattern in positive_patterns)
+    for pattern in positive_patterns:
+
+        if pattern not in text:
+            continue
+
+        if not _phrase_is_negated(
+            text,
+            pattern,
+        ):
+            return True
+
+    return False
+
+
+def _contains_positive_weather_risk_claim(
+    text: str,
+) -> bool:
+    """
+    Detect whether the analysis positively claims that
+    weather-related operational risk exists.
+    """
+
+    positive_patterns = [
+        "high weather risk",
+        "high operational risk",
+        "elevated weather risk",
+        "elevated operational risk",
+        "significant weather risk",
+        "severe weather risk",
+        "hazardous weather",
+        "hazardous weather conditions",
+        "weather conditions are hazardous",
+        "potentially disruptive weather",
+        "weather conditions are potentially disruptive",
+        "reduced visibility",
+        "lifr",
+        "ifr conditions",
+    ]
+
+    for pattern in positive_patterns:
+
+        if pattern not in text:
+            continue
+
+        if not _phrase_is_negated(
+            text,
+            pattern,
+        ):
+            return True
+
+    return False
 
 
 class VerificationAgent:
     """
-    Deterministically verifies whether an AeroWatch analysis
-    is adequately supported by the collected evidence.
+    Deterministic verification layer for AeroWatch.
 
-    The verifier does NOT generate new conclusions.
-    It checks whether the existing analysis is consistent
-    with the evidence collected from the investigation agents.
+    The verifier checks:
+
+    1. Airport consistency
+    2. Structured operational consistency
+    3. Structured weather-risk consistency
+    4. Textual grounding
+    5. Unsupported causal claims
+    6. Excessive certainty
+    7. Required evidence
+    8. Required analysis fields
+    9. Confidence validity
     """
 
     def verify(
@@ -80,70 +160,90 @@ class VerificationAgent:
         issues: list[str] = []
         missing_evidence: list[str] = []
 
-        assessment_text = analysis.overall_assessment.lower()
+        assessment_text = (
+            analysis.overall_assessment.lower()
+        )
 
-        # ---------------------------------------------------------
-        # 1. Operational disruption grounding
-        # ---------------------------------------------------------
-        #
-        # If FAA reports no active operational event, the analysis
-        # must not positively claim that a disruption exists.
-        #
+        # ====================================================
+        # 1. Airport consistency
+        # ====================================================
+
+        if analysis.airport != operations.airport:
+            issues.append(
+                "The analysis airport does not match "
+                "the investigated airport."
+            )
+
+        if analysis.airport != weather.airport:
+            issues.append(
+                "The analysis airport does not match "
+                "the weather evidence airport."
+            )
+
+        # ====================================================
+        # 2. Structured operational consistency
+        # ====================================================
+
+        if (
+            analysis.disruption_detected
+            != operations.disruption_detected
+        ):
+            issues.append(
+                "The analysis disruption_detected value does "
+                "not match the operational evidence."
+            )
+
+        # ====================================================
+        # 3. Structured weather-risk consistency
+        # ====================================================
+
+        if (
+            analysis.weather_risk_detected
+            != weather.weather_risk_detected
+        ):
+            issues.append(
+                "The analysis weather_risk_detected value does "
+                "not match the weather evidence."
+            )
+
+        # ====================================================
+        # 4. Textual operational grounding
+        # ====================================================
+
         if not operations.disruption_detected:
-            if _contains_positive_disruption_claim(assessment_text):
+
+            if _contains_positive_disruption_claim(
+                assessment_text
+            ):
                 issues.append(
-                    "The analysis claims or implies an operational "
-                    "disruption, but no active FAA operational event "
-                    "was detected."
+                    "The analysis claims or implies an "
+                    "operational disruption, but no active "
+                    "FAA operational event was detected."
                 )
 
-        # ---------------------------------------------------------
-        # 2. Unsupported causal claims
-        # ---------------------------------------------------------
-        #
-        # AeroWatch should distinguish correlation from causation.
-        # The available evidence generally does not prove that
-        # weather caused an operational event.
-        #
+        # ====================================================
+        # 5. Textual weather-risk grounding
+        # ====================================================
+
+        if not weather.weather_risk_detected:
+
+            if _contains_positive_weather_risk_claim(
+                assessment_text
+            ):
+                issues.append(
+                    "The analysis claims or implies elevated "
+                    "weather risk, but the weather assessment "
+                    "does not indicate weather risk."
+                )
+
+        # ====================================================
+        # 6. Unsupported causation
+        # ====================================================
+
         causal_patterns = [
-            "caused by",
-            "caused the",
-            "caused an",
-            "caused a",
-            "causes",
-            "caused",
-            "due to",
-            "resulted from",
-            "resulted in",
-            "led to",
-            "responsible for",
-            "direct cause",
-            "directly caused",
-        ]
-
-        for pattern in causal_patterns:
-            if pattern in assessment_text:
-                issues.append(
-                    "The analysis may imply direct causation "
-                    "without sufficient evidence."
-                )
-                break
-
-        # ---------------------------------------------------------
-        # 3. Explicit weather-causation claims
-        # ---------------------------------------------------------
-        #
-        # This is intentionally stricter than the generic causal
-        # check because weather is one of AeroWatch's evidence
-        # sources.
-        #
-        weather_causal_patterns = [
             "weather caused",
             "weather conditions caused",
-            "weather is causing",
             "weather directly caused",
-            "weather resulted in",
-            "weather led to",
             "poor weather caused",
             "bad weather caused",
             "low visibility caused",
@@ -152,28 +252,67 @@ class VerificationAgent:
             "storm caused",
             "thunderstorms caused",
             "fog caused",
+            "weather resulted in",
+            "weather led to",
+            "weather was responsible for",
+            "weather is responsible for",
+            "weather directly resulted in",
+            "weather directly led to",
+            "the disruption was caused by weather",
+            "the disruption was caused by the weather",
+            "the operational disruption was caused by weather",
+            "the operational disruption was caused by the weather",
+            "the delay was caused by weather",
+            "the delay was caused by the weather",
+            "the ground delay was caused by weather",
+            "the ground delay was caused by the weather",
+            "the disruption resulted from weather",
+            "the disruption resulted from the weather",
+            "the operational disruption resulted from weather",
+            "the operational disruption resulted from the weather",
+            "the disruption was due to weather",
+            "the disruption was due to the weather",
+            "the operational disruption was due to weather",
+            "the operational disruption was due to the weather",
+            "the delay was due to weather",
+            "the delay was due to the weather",
+            "the ground delay was due to weather",
+            "the ground delay was due to the weather",
         ]
 
-        for pattern in weather_causal_patterns:
-            if pattern in assessment_text:
-                issue = (
-                    "The analysis attributes an operational "
-                    "disruption directly to weather without "
-                    "explicit causal evidence."
-                )
+        causal_violation = False
 
-                if issue not in issues:
-                    issues.append(issue)
+        for pattern in causal_patterns:
 
-                break
+            if pattern not in assessment_text:
+                continue
 
-        # ---------------------------------------------------------
-        # 4. Excessive certainty
-        # ---------------------------------------------------------
-        #
-        # Strong certainty language can exceed what the available
-        # evidence supports.
-        #
+            if _phrase_is_negated(
+                assessment_text,
+                pattern,
+            ):
+                continue
+
+            causal_violation = True
+            break
+
+        if causal_violation:
+
+            issues.append(
+                "The analysis may imply direct causation "
+                "without sufficient evidence."
+            )
+
+            issues.append(
+                "The analysis attributes an operational "
+                "disruption directly to weather without "
+                "explicit causal evidence."
+            )
+
+        # ====================================================
+        # 7. Strong certainty language
+        # ====================================================
+
         certainty_patterns = [
             "definitely",
             "certainly",
@@ -184,17 +323,18 @@ class VerificationAgent:
             "undoubtedly",
         ]
 
-        for pattern in certainty_patterns:
-            if pattern in assessment_text:
-                issues.append(
-                    "The analysis uses strong certainty language "
-                    "that may exceed the available evidence."
-                )
-                break
+        if any(
+            pattern in assessment_text
+            for pattern in certainty_patterns
+        ):
+            issues.append(
+                "The analysis uses strong certainty language "
+                "that may exceed the available evidence."
+            )
 
-        # ---------------------------------------------------------
-        # 5. Required evidence checks
-        # ---------------------------------------------------------
+        # ====================================================
+        # 8. Required evidence
+        # ====================================================
 
         if operations.evidence is None:
             missing_evidence.append(
@@ -206,43 +346,24 @@ class VerificationAgent:
                 "Weather evidence is missing."
             )
 
-        # ---------------------------------------------------------
-        # 6. Limitations preservation
-        # ---------------------------------------------------------
+        # ====================================================
+        # 9. Required analysis fields
+        # ====================================================
 
         if not analysis.limitations:
             issues.append(
-                "The analysis does not preserve evidence limitations."
+                "The analysis does not preserve evidence "
+                "limitations."
             )
-
-        # ---------------------------------------------------------
-        # 7. Airport consistency
-        # ---------------------------------------------------------
-
-        if analysis.airport != operations.airport:
-            issues.append(
-                "The analysis airport does not match the "
-                "investigated airport."
-            )
-
-        if analysis.airport != weather.airport:
-            issues.append(
-                "The analysis airport does not match the "
-                "weather evidence airport."
-            )
-
-        # ---------------------------------------------------------
-        # 8. Observed facts requirement
-        # ---------------------------------------------------------
 
         if not analysis.observed_facts:
             issues.append(
                 "The analysis does not contain any observed facts."
             )
 
-        # ---------------------------------------------------------
-        # 9. Confidence validation
-        # ---------------------------------------------------------
+        # ====================================================
+        # 10. Confidence validation
+        # ====================================================
 
         valid_confidence_levels = {
             "low",
@@ -250,14 +371,18 @@ class VerificationAgent:
             "high",
         }
 
-        if analysis.confidence.lower() not in valid_confidence_levels:
+        if (
+            analysis.confidence.lower()
+            not in valid_confidence_levels
+        ):
             issues.append(
-                "The analysis contains an invalid confidence level."
+                "The analysis contains an invalid "
+                "confidence level."
             )
 
-        # ---------------------------------------------------------
-        # 10. Final verification decision
-        # ---------------------------------------------------------
+        # ====================================================
+        # 11. Final decision
+        # ====================================================
 
         approved = (
             len(issues) == 0
@@ -265,11 +390,15 @@ class VerificationAgent:
         )
 
         if approved:
+
             verification_summary = (
-                "The analysis is adequately supported by the "
-                "available operational and weather evidence."
+                "The analysis is adequately supported by "
+                "the available operational and weather "
+                "evidence."
             )
+
         else:
+
             verification_summary = (
                 "The analysis contains reasoning or evidence "
                 "grounding issues that should be reviewed."

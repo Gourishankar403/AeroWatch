@@ -1,0 +1,100 @@
+{
+  "evaluation_timestamp": "20260909T181925Z",
+  "evaluation_type": "adversarial",
+  "metrics": {
+    "total_cases": 6,
+    "verifier_detection_rate": 0.6666666666666666,
+    "revision_success_rate": 0.0,
+    "final_approval_rate": 0.0
+  },
+  "cases": [
+    {
+      "case_name": "hallucinated_disruption",
+      "expected_verifier_rejection": true,
+      "verifier_rejected": false,
+      "verification_issues": [],
+      "revision_attempted": false,
+      "revision_valid": false,
+      "revision_error": null,
+      "revision_succeeded": false,
+      "final_verifier_approved": false,
+      "final_verification_issues": [],
+      "error": null
+    },
+    {
+      "case_name": "unsupported_weather_causation",
+      "expected_verifier_rejection": true,
+      "verifier_rejected": true,
+      "verification_issues": [
+        "The analysis may imply direct causation without sufficient evidence.",
+        "The analysis attributes an operational disruption directly to weather without explicit causal evidence."
+      ],
+      "revision_attempted": true,
+      "revision_valid": false,
+      "revision_error": null,
+      "revision_succeeded": false,
+      "final_verifier_approved": false,
+      "final_verification_issues": [],
+      "error": "LLM revision does not match AnalysisAssessment schema."
+    },
+    {
+      "case_name": "missing_limitations",
+      "expected_verifier_rejection": true,
+      "verifier_rejected": true,
+      "verification_issues": [
+        "The analysis does not preserve evidence limitations."
+      ],
+      "revision_attempted": true,
+      "revision_valid": false,
+      "revision_error": null,
+      "revision_succeeded": false,
+      "final_verifier_approved": false,
+      "final_verification_issues": [],
+      "error": "LLM revision does not match AnalysisAssessment schema."
+    },
+    {
+      "case_name": "wrong_airport",
+      "expected_verifier_rejection": true,
+      "verifier_rejected": true,
+      "verification_issues": [
+        "The analysis airport does not match the investigated airport.",
+        "The analysis airport does not match the weather evidence airport."
+      ],
+      "revision_attempted": true,
+      "revision_valid": false,
+      "revision_error": null,
+      "revision_succeeded": false,
+      "final_verifier_approved": false,
+      "final_verification_issues": [],
+      "error": "LLM revision does not match AnalysisAssessment schema."
+    },
+    {
+      "case_name": "invalid_confidence",
+      "expected_verifier_rejection": true,
+      "verifier_rejected": true,
+      "verification_issues": [
+        "The analysis contains an invalid confidence level."
+      ],
+      "revision_attempted": true,
+      "revision_valid": false,
+      "revision_error": null,
+      "revision_succeeded": false,
+      "final_verifier_approved": false,
+      "final_verification_issues": [],
+      "error": "LLM revision does not match AnalysisAssessment schema."
+    },
+    {
+      "case_name": "hallucinated_weather_risk",
+      "expected_verifier_rejection": true,
+      "verifier_rejected": false,
+      "verification_issues": [],
+      "revision_attempted": false,
+      "revision_valid": false,
+      "revision_error": null,
+      "revision_succeeded": false,
+      "final_verifier_approved": false,
+      "final_verification_issues": [],
+      "error": null
+    }
+  ]
+}

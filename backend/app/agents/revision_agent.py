@@ -2,19 +2,18 @@ import json
 
 from app.models.analysis import AnalysisAssessment
 from app.models.operations import OperationsAssessment
-from app.models.weather import WeatherAssessment
 from app.models.verification import VerificationAssessment
+from app.models.weather import WeatherAssessment
 from app.providers.llm_provider import LLMProvider
 
 
 class RevisionAgent:
     """
-    Uses an LLM to revise an analysis when the Verification Agent
-    identifies evidence-grounding or reasoning issues.
+    Revises an analysis after deterministic verification
+    identifies evidence-grounding or reasoning problems.
     """
 
     def __init__(self):
-
         self.llm = LLMProvider()
 
     def revise(
@@ -25,162 +24,333 @@ class RevisionAgent:
         verification: VerificationAssessment,
     ) -> AnalysisAssessment:
 
-        """
-        Revises the analysis using the original evidence,
-        verification feedback, and the previous analysis.
-        """
-
-        # --------------------------------------------------
-        # Serialize investigation state
-        # --------------------------------------------------
-
-        investigation_data = {
-            "operations": operations.model_dump(),
-            "weather": weather.model_dump(),
-            "previous_analysis": analysis.model_dump(),
-            "verification": verification.model_dump(),
-        }
-
-        investigation_json = json.dumps(
-            investigation_data,
-            indent=2,
-            default=str,
-        )
-
-        # --------------------------------------------------
-        # Revision prompt
-        # --------------------------------------------------
-
         prompt = f"""
-You are the Revision Agent for AeroWatch.
+You are the revision agent for AeroWatch.
 
 Your task is to revise an aviation disruption analysis
-after a deterministic Verification Agent has identified
-reasoning or evidence-grounding problems.
+after a deterministic verification process identified
+one or more problems.
 
-The revised analysis MUST be more evidence-grounded
-than the previous analysis.
+You must correct the identified problems while remaining
+strictly grounded in the supplied operational and weather
+evidence.
 
-STRICT RULES:
+============================================================
+OPERATIONAL EVIDENCE
+============================================================
 
-1. Use ONLY the supplied investigation evidence.
+{operations.model_dump_json(indent=2)}
 
-2. Do NOT invent FAA events, weather observations,
-   operational conditions, or other facts.
+============================================================
+WEATHER EVIDENCE
+============================================================
 
-3. Preserve facts that are directly supported by
-   the investigation evidence.
+{weather.model_dump_json(indent=2)}
 
-4. Remove or rewrite unsupported claims.
+============================================================
+PREVIOUS ANALYSIS
+============================================================
 
-5. NEVER claim that weather CAUSED an operational
-   disruption unless the evidence explicitly establishes
-   causation.
+{analysis.model_dump_json(indent=2)}
 
-6. A weather condition may be described as a potential
-   contributing factor, but it must NOT be presented
-   as a proven cause unless explicitly supported.
+============================================================
+VERIFICATION RESULT
+============================================================
 
-7. If no active FAA operational event exists, the revised
-   analysis MUST NOT claim that an operational disruption
-   is occurring.
+{verification.model_dump_json(indent=2)}
 
-8. Preserve important source limitations.
+============================================================
+REVISION RULES
+============================================================
 
-9. Address EVERY issue raised by the Verification Agent.
+1. USE ONLY PROVIDED EVIDENCE
 
-10. Do not blindly preserve statements from the previous
-    analysis if they conflict with the evidence.
+Do not introduce external information.
 
-11. observed_facts must contain only directly supported facts.
+Do not invent operational events.
 
-12. potential_factors must contain only possible factors
-    supported by the evidence and must not be presented
-    as proven causes.
+Do not invent weather conditions.
 
-13. Confidence must reflect the strength and limitations
-    of the available evidence.
+Do not invent causes.
 
-14. The airport MUST exactly match the airport in the
-    operational evidence.
+Do not invent timestamps or observations.
 
-15. Return ONLY valid JSON.
+------------------------------------------------------------
 
-16. Do not use markdown or code fences.
+2. CORRECT THE STRUCTURED DISRUPTION STATE
 
-The revised JSON MUST contain exactly these fields:
+The revised field:
+
+`disruption_detected`
+
+MUST exactly match:
+
+operations.disruption_detected
+
+If the operational evidence reports no active
+disruption, the revised value MUST be false.
+
+If the operational evidence reports an active
+disruption, the revised value MUST be true.
+
+------------------------------------------------------------
+
+3. CORRECT THE STRUCTURED WEATHER-RISK STATE
+
+The revised field:
+
+`weather_risk_detected`
+
+MUST exactly match:
+
+weather.weather_risk_detected
+
+------------------------------------------------------------
+
+4. AIRPORT
+
+The revised:
+
+`airport`
+
+MUST exactly match:
+
+{operations.airport}
+
+------------------------------------------------------------
+
+5. CAUSATION
+
+Do not claim that weather caused an operational
+disruption unless explicit causal evidence exists.
+
+The simultaneous presence of:
+
+- an operational disruption
+- IFR/LIFR conditions
+- reduced visibility
+- strong winds
+- precipitation
+- thunderstorms
+
+does NOT establish causation.
+
+If causation is not established, explicitly preserve
+that limitation.
+
+Acceptable wording includes:
+
+"The available evidence does not establish causation."
+
+or:
+
+"Weather may be a potential contributing factor, but
+causation is not established."
+
+Do NOT state:
+
+"Weather caused the disruption."
+
+unless the supplied evidence explicitly supports that claim.
+
+------------------------------------------------------------
+
+6. OBSERVED FACTS
+
+`observed_facts` must contain only facts directly
+supported by the evidence.
+
+------------------------------------------------------------
+
+7. POTENTIAL FACTORS
+
+Potential factors may be included when relevant, but
+they must not be presented as confirmed causes.
+
+------------------------------------------------------------
+
+8. LIMITATIONS
+
+Preserve the existing evidence limitations.
+
+If the verifier says that limitations are missing,
+restore the appropriate limitations based only on the
+supplied evidence.
+
+Do not invent limitations unrelated to the evidence.
+
+------------------------------------------------------------
+
+9. CONFIDENCE
+
+Use exactly one of:
+
+- low
+- medium
+- high
+
+Confidence must reflect the evidence available.
+
+Do not use:
+
+- certain
+- definite
+- guaranteed
+- absolute
+- 100%
+
+------------------------------------------------------------
+
+10. OVERALL ASSESSMENT
+
+The revised overall assessment must:
+
+- accurately represent operational status
+- accurately represent weather risk
+- avoid unsupported claims
+- avoid unsupported causation
+- preserve uncertainty
+- distinguish facts from potential factors
+- reflect the verifier's identified problems
+
+============================================================
+OUTPUT FORMAT
+============================================================
+
+Return ONLY valid JSON.
+
+Do not return Markdown.
+
+Do not return code fences.
+
+Do not include explanations outside the JSON.
+
+Return exactly these fields:
 
 {{
-    "airport": "airport code",
-
-    "observed_facts": [
-        "directly supported fact"
-    ],
-
-    "potential_factors": [
-        "potential but unproven factor"
-    ],
-
-    "overall_assessment": "revised evidence-grounded summary",
-
-    "confidence": "low, medium, or high",
-
-    "limitations": [
-        "important limitation"
-    ]
+    "airport": "{operations.airport}",
+    "disruption_detected": false,
+    "weather_risk_detected": false,
+    "observed_facts": [],
+    "potential_factors": [],
+    "overall_assessment": "",
+    "confidence": "medium",
+    "limitations": []
 }}
 
-INVESTIGATION DATA:
+============================================================
+FINAL CHECK
+============================================================
 
-{investigation_json}
+Before returning the result, verify all of the following:
+
+1. airport exactly matches operations.airport
+2. disruption_detected exactly matches
+   operations.disruption_detected
+3. weather_risk_detected exactly matches
+   weather.weather_risk_detected
+4. observed_facts contain only supported facts
+5. potential_factors are not presented as confirmed causes
+6. unsupported causal claims have been removed
+7. limitations are preserved
+8. confidence is low, medium, or high
+9. the output contains only valid JSON
+10. no additional fields are present
 """
 
-        # --------------------------------------------------
-        # Call Groq
-        # --------------------------------------------------
+        raw_response = self.llm.generate_json(
+            prompt
+        )
 
-        raw_response = self.llm.generate_json(prompt)
-
-        # --------------------------------------------------
-        # Parse JSON
-        # --------------------------------------------------
+        # ----------------------------------------------------
+        # JSON parsing
+        # ----------------------------------------------------
 
         try:
 
-            result = json.loads(raw_response)
-
-        except json.JSONDecodeError as exc:
-
-            raise ValueError(
-                "RevisionAgent received invalid JSON from the LLM."
-            ) from exc
-
-        # --------------------------------------------------
-        # Validate Pydantic schema
-        # --------------------------------------------------
-
-        try:
-
-            revised_assessment = (
-                AnalysisAssessment.model_validate(result)
+            data = json.loads(
+                raw_response
             )
 
-        except Exception as exc:
+        except json.JSONDecodeError as error:
+
+            raise ValueError(
+                "RevisionAgent returned invalid JSON."
+            ) from error
+
+        # ----------------------------------------------------
+        # Pydantic validation
+        # ----------------------------------------------------
+
+        try:
+
+            revised_analysis = (
+                AnalysisAssessment.model_validate(
+                    data
+                )
+            )
+
+        except Exception as error:
 
             raise ValueError(
                 "LLM revision does not match "
                 "AnalysisAssessment schema."
-            ) from exc
+            ) from error
 
-        # --------------------------------------------------
-        # Deterministic airport validation
-        # --------------------------------------------------
+        # ----------------------------------------------------
+        # Deterministic consistency checks
+        # ----------------------------------------------------
 
-        if revised_assessment.airport != operations.airport:
-
+        if (
+            revised_analysis.airport
+            != operations.airport
+        ):
             raise ValueError(
-                "LLM revision returned an airport that does not "
-                "match the investigated airport."
+                "RevisionAgent returned an airport that "
+                "does not match the operational evidence."
             )
 
-        return revised_assessment
+        if (
+            revised_analysis.disruption_detected
+            != operations.disruption_detected
+        ):
+            raise ValueError(
+                "RevisionAgent returned a disruption_detected "
+                "value inconsistent with the operational evidence."
+            )
+
+        if (
+            revised_analysis.weather_risk_detected
+            != weather.weather_risk_detected
+        ):
+            raise ValueError(
+                "RevisionAgent returned a weather_risk_detected "
+                "value inconsistent with the weather evidence."
+            )
+
+        valid_confidence_levels = {
+            "low",
+            "medium",
+            "high",
+        }
+
+        if (
+            revised_analysis.confidence.lower()
+            not in valid_confidence_levels
+        ):
+            raise ValueError(
+                "RevisionAgent returned an invalid confidence level."
+            )
+
+        if not revised_analysis.limitations:
+            raise ValueError(
+                "RevisionAgent failed to preserve "
+                "evidence limitations."
+            )
+
+        if not revised_analysis.observed_facts:
+            raise ValueError(
+                "RevisionAgent returned no observed facts."
+            )
+
+        return revised_analysis
