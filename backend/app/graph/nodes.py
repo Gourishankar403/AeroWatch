@@ -4,10 +4,10 @@ from app.graph.state import InvestigationState
 from app.agents.verification_agent import VerificationAgent
 from app.agents.analysis_agent import AnalysisAgent
 from app.agents.revision_agent import RevisionAgent
-from app.agents.revision_agent import RevisionAgent
+
 
 def investigate_operations(
-    state: InvestigationState
+    state: InvestigationState,
 ) -> dict:
     """
     LangGraph node that investigates airport
@@ -26,7 +26,7 @@ def investigate_operations(
 
 
 def investigate_weather(
-    state: InvestigationState
+    state: InvestigationState,
 ) -> dict:
     """
     LangGraph node that investigates current
@@ -45,7 +45,7 @@ def investigate_weather(
 
 
 def analyze_evidence(
-    state: InvestigationState
+    state: InvestigationState,
 ) -> dict:
     """
     Combines operations and weather assessments
@@ -64,11 +64,8 @@ def analyze_evidence(
     }
 
 
-
-
-
 def verify_analysis(
-    state: InvestigationState
+    state: InvestigationState,
 ) -> dict:
     """
     Verifies whether the generated analysis is
@@ -89,30 +86,7 @@ def verify_analysis(
 
 
 def revise_analysis(
-    state: InvestigationState
-) -> dict:
-    """
-    Revises the analysis when the verification
-    agent identifies evidence-grounding issues.
-    """
-
-    reviser = RevisionAgent()
-
-    revised_assessment = reviser.revise(
-        operations=state["operations_assessment"],
-        weather=state["weather_assessment"],
-        analysis=state["analysis_assessment"],
-        verification=state["verification_assessment"],
-    )
-
-    return {
-        "analysis_assessment": revised_assessment,
-        "revision_count": state["revision_count"] + 1,
-    }
-
-
-def revise_analysis(
-    state: InvestigationState
+    state: InvestigationState,
 ) -> dict:
     """
     Revises the analysis when verification identifies
@@ -132,4 +106,3 @@ def revise_analysis(
         "analysis_assessment": revised_assessment,
         "revision_count": state["revision_count"] + 1,
     }
-
