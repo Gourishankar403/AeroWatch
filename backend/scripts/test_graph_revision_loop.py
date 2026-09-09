@@ -3,107 +3,55 @@ from datetime import datetime, timezone
 from langgraph.graph import StateGraph, START, END
 
 from app.graph.state import InvestigationState
-
-from app.models.operations import OperationsAssessment
-from app.models.weather import WeatherAssessment
+from app.graph.nodes import (
+    investigate_operations,
+    investigate_weather,
+    analyze_evidence,
+    verify_analysis,
+    revise_analysis,
+)
 from app.models.analysis import AnalysisAssessment
 
-from app.agents.verification_agent import VerificationAgent
-from app.agents.revision_agent import RevisionAgent
 
-
-# --------------------------------------------------
-# Test node: deliberately creates flawed analysis
-# --------------------------------------------------
-
-def create_bad_analysis(
-    state: InvestigationState,
-) -> dict:
+def force_bad_analysis(state: InvestigationState) -> dict:
     """
-    Creates an intentionally flawed analysis to force
-    the verification failure branch.
+    Test-only node.
+
+    Replaces the valid LLM analysis with a deliberately
+    unsupported analysis so that the LangGraph revision
+    branch is guaranteed to execute.
     """
 
-    analysis = AnalysisAssessment(
+    bad_analysis = AnalysisAssessment(
         airport=state["airport"],
+
         observed_facts=[
-            "No operational disruption detected."
+            "No active FAA operational events were detected."
         ],
+
         potential_factors=[
-            "Weather conditions may influence operations."
+            "Weather conditions caused the airport disruption."
         ],
+
         overall_assessment=(
-            "Weather conditions caused a significant "
-            "operational disruption at the airport."
+            "Poor weather caused an operational disruption "
+            f"at {state['airport']}."
         ),
+
         confidence="high",
+
         limitations=[],
     )
 
     return {
-        "analysis_assessment": analysis
+        "analysis_assessment": bad_analysis
     }
 
 
-# --------------------------------------------------
-# Verification node
-# --------------------------------------------------
-
-def verify_test_analysis(
-    state: InvestigationState,
-) -> dict:
+def should_continue(state: InvestigationState) -> str:
     """
-    Verifies the current analysis.
-    """
-
-    verifier = VerificationAgent()
-
-    verification = verifier.verify(
-        operations=state["operations_assessment"],
-        weather=state["weather_assessment"],
-        analysis=state["analysis_assessment"],
-    )
-
-    return {
-        "verification_assessment": verification
-    }
-
-
-# --------------------------------------------------
-# Revision node
-# --------------------------------------------------
-
-def revise_test_analysis(
-    state: InvestigationState,
-) -> dict:
-    """
-    Revises the analysis using verification feedback.
-    """
-
-    revision_agent = RevisionAgent()
-
-    revised_analysis = revision_agent.revise(
-        operations=state["operations_assessment"],
-        weather=state["weather_assessment"],
-        analysis=state["analysis_assessment"],
-        verification=state["verification_assessment"],
-    )
-
-    return {
-        "analysis_assessment": revised_analysis,
-        "revision_count": state["revision_count"] + 1,
-    }
-
-
-# --------------------------------------------------
-# Conditional routing
-# --------------------------------------------------
-
-def should_continue(
-    state: InvestigationState,
-) -> str:
-    """
-    Decides whether to end or perform another revision.
+    Determines whether the graph should finish or
+    send the analysis through the revision agent.
     """
 
     verification = state["verification_assessment"]
@@ -117,38 +65,92 @@ def should_continue(
     return "revise"
 
 
-# --------------------------------------------------
-# Build controlled test graph
-# --------------------------------------------------
-
 def build_test_graph():
+    """
+    Builds a controlled LangGraph specifically for testing
+    the autonomous revision loop.
+
+    The real AeroWatch graph is used, but a test-only node
+    deliberately corrupts the analysis before verification.
+    """
 
     workflow = StateGraph(InvestigationState)
 
     workflow.add_node(
+        "operations",
+        investigate_operations
+    )
+
+    workflow.add_node(
+        "weather",
+        investigate_weather
+    )
+
+    workflow.add_node(
         "analysis",
-        create_bad_analysis,
+        analyze_evidence
+    )
+
+    workflow.add_node(
+        "force_bad_analysis",
+        force_bad_analysis
     )
 
     workflow.add_node(
         "verification",
-        verify_test_analysis,
+        verify_analysis
     )
 
     workflow.add_node(
         "revision",
-        revise_test_analysis,
+        revise_analysis
+    )
+
+    # --------------------------------------------------
+    # Investigation
+    # --------------------------------------------------
+
+    workflow.add_edge(
+        START,
+        "operations"
     )
 
     workflow.add_edge(
         START,
-        "analysis",
+        "weather"
     )
 
     workflow.add_edge(
-        "analysis",
-        "verification",
+        "operations",
+        "analysis"
     )
+
+    workflow.add_edge(
+        "weather",
+        "analysis"
+    )
+
+    # --------------------------------------------------
+    # LLM Analysis
+    # --------------------------------------------------
+
+    workflow.add_edge(
+        "analysis",
+        "force_bad_analysis"
+    )
+
+    # --------------------------------------------------
+    # Verification
+    # --------------------------------------------------
+
+    workflow.add_edge(
+        "force_bad_analysis",
+        "verification"
+    )
+
+    # --------------------------------------------------
+    # Revision loop
+    # --------------------------------------------------
 
     workflow.add_conditional_edges(
         "verification",
@@ -161,123 +163,157 @@ def build_test_graph():
 
     workflow.add_edge(
         "revision",
-        "verification",
+        "verification"
     )
 
     return workflow.compile()
 
 
-# --------------------------------------------------
-# Run test
-# --------------------------------------------------
-
 def main():
+
+    print(
+        "\n===== AEROWATCH LANGGRAPH "
+        "LLM REVISION LOOP TEST =====\n"
+    )
 
     graph = build_test_graph()
 
-    operations = OperationsAssessment(
-        airport="TEST",
-        disruption_detected=False,
-        event_count=0,
-        findings=[
-            "No operational disruption detected."
-        ],
-        limitations=[
-            "This assessment reflects controlled test operational evidence."
-        ],
-        evidence={
-            "airport": "TEST",
-            "source": "test",
-            "retrieved_at": datetime.now(
-                timezone.utc
-            ).isoformat(),
-            "events": [],
-            "summary": "No operational events detected."
-        },
-    )
-
-    weather = WeatherAssessment(
-        airport="TEST",
-        weather_risk_detected=False,
-        risk_level="low",
-        findings=[
-            "No significant weather risk detected."
-        ],
-        limitations=[
-            "This assessment reflects controlled test weather evidence."
-        ],
-        evidence={
-            "airport": "TEST",
-            "source": "test",
-            "retrieved_at": datetime.now(
-                timezone.utc
-            ).isoformat(),
-            "temperature_c": 20.0,
-            "wind_speed_knots": 5.0,
-            "wind_gust_knots": None,
-            "visibility_meters": None,
-            "visibility_raw": "10+",
-            "weather_conditions": [],
-            "flight_category": "VFR",
-            "raw_observation": "TEST METAR",
-        },
-    )
-
     initial_state = {
-        "query": "Test LangGraph revision loop",
-        "airport": "TEST",
+        "query": (
+            "Investigate current operational conditions "
+            "at JFK airport"
+        ),
 
-        "operations_assessment": operations,
-        "weather_assessment": weather,
+        "airport": "KJFK",
+
+        "operations_assessment": None,
+
+        "weather_assessment": None,
 
         "analysis_assessment": None,
+
         "verification_assessment": None,
 
         "revision_count": 0,
+
         "max_revisions": 2,
 
         "investigation_complete": False,
     }
 
+    print("Running AeroWatch LangGraph...\n")
+
     result = graph.invoke(initial_state)
 
+    # --------------------------------------------------
+    # Final results
+    # --------------------------------------------------
+
+    print("===== OPERATIONS =====\n")
+
     print(
-        "\n===== LANGGRAPH REVISION LOOP TEST =====\n"
+        result["operations_assessment"]
+        .model_dump_json(indent=2)
     )
 
-    print("Revision count:")
-    print(result["revision_count"])
+    print("\n===== WEATHER =====\n")
 
-    print("\n--- FINAL ANALYSIS ---")
+    print(
+        result["weather_assessment"]
+        .model_dump_json(indent=2)
+    )
+
+    print("\n===== FINAL ANALYSIS =====\n")
 
     print(
         result["analysis_assessment"]
         .model_dump_json(indent=2)
     )
 
-    print("\n--- FINAL VERIFICATION ---")
+    print("\n===== FINAL VERIFICATION =====\n")
 
     print(
         result["verification_assessment"]
         .model_dump_json(indent=2)
     )
 
-    print("\n===== TEST RESULT =====")
+    print("\n===== REVISION INFORMATION =====\n")
 
-    if (
+    print(
+        "Revision count:",
+        result["revision_count"]
+    )
+
+    print(
+        "Maximum revisions:",
+        result["max_revisions"]
+    )
+
+    # --------------------------------------------------
+    # Assertions
+    # --------------------------------------------------
+
+    assert result["operations_assessment"] is not None
+
+    assert result["weather_assessment"] is not None
+
+    assert result["analysis_assessment"] is not None
+
+    assert result["verification_assessment"] is not None
+
+    # The test deliberately creates a bad analysis,
+    # therefore at least one revision must happen.
+    assert result["revision_count"] >= 1
+
+    # The LLM RevisionAgent must produce a valid
+    # AnalysisAssessment.
+    assert (
+        type(result["analysis_assessment"]).__name__
+        == "AnalysisAssessment"
+    )
+
+    # The revised analysis must ultimately pass
+    # deterministic verification.
+    assert (
         result["verification_assessment"].approved
-        and result["revision_count"] > 0
-    ):
-        print(
-            "SUCCESS: LangGraph correctly routed "
-            "the failed analysis through revision "
-            "and re-verification."
-        )
-    else:
-        print(
-            "FAILURE: LangGraph revision routing "
-            "did not behave as expected."
-        )
+        is True
+    )
+
+    print(
+        "\n===== LANGGRAPH TEST PASSED ====="
+    )
+
+    print(
+        "The AeroWatch graph successfully:"
+    )
+
+    print(
+        "1. Collected operational evidence"
+    )
+
+    print(
+        "2. Collected weather evidence"
+    )
+
+    print(
+        "3. Generated an LLM analysis"
+    )
+
+    print(
+        "4. Detected an intentionally bad analysis"
+    )
+
+    print(
+        "5. Routed the analysis to the LLM RevisionAgent"
+    )
+
+    print(
+        "6. Re-verified the revised analysis"
+    )
+
+    print(
+        "7. Accepted the corrected analysis"
+    )
 
 
 if __name__ == "__main__":
