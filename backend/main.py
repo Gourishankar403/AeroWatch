@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 
@@ -13,19 +14,25 @@ app = FastAPI(
 )
 
 
-app.include_router(
-    router,
+# Allow the React/Vite frontend to communicate with FastAPI
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
-@app.get(
-    "/",
-)
+# Register API routes
+app.include_router(router)
+
+
+@app.get("/")
 def root():
-    """
-    Basic API information endpoint.
-    """
-
     return {
         "name": "AeroWatch",
         "status": "online",
@@ -33,14 +40,8 @@ def root():
     }
 
 
-@app.get(
-    "/health",
-)
+@app.get("/health")
 def health():
-    """
-    Health check endpoint.
-    """
-
     return {
         "status": "healthy",
     }

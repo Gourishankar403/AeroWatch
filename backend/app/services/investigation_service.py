@@ -1,3 +1,4 @@
+from app.core.config import settings
 from app.graph.state import InvestigationState
 from app.graph.workflow import build_investigation_graph
 from app.models.analysis import AnalysisAssessment
@@ -10,8 +11,8 @@ class InvestigationService:
     a complete AeroWatch investigation.
     """
 
-    def __init__(self, max_revisions: int = 2):
-        self.max_revisions = max_revisions
+    def __init__(self):
+        self.max_revisions = settings.MAX_REVISIONS
         self.graph = build_investigation_graph()
 
     def investigate(

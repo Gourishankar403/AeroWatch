@@ -1,15 +1,14 @@
-import os
 import time
 
-from dotenv import load_dotenv
-from groq import Groq
-from groq import APIConnectionError
-from groq import APITimeoutError
-from groq import RateLimitError
-from groq import InternalServerError
+from groq import (
+    Groq,
+    APIConnectionError,
+    APITimeoutError,
+    RateLimitError,
+    InternalServerError,
+)
 
-
-load_dotenv()
+from app.core.config import settings
 
 
 class LLMProvider:
@@ -25,7 +24,7 @@ class LLMProvider:
     """
 
     def __init__(self):
-        api_key = os.getenv("GROQ_API_KEY")
+        api_key = settings.GROQ_API_KEY
 
         if not api_key:
             raise ValueError(
@@ -34,23 +33,12 @@ class LLMProvider:
 
         self.client = Groq(
             api_key=api_key,
-            timeout=float(
-                os.getenv("GROQ_TIMEOUT", "30")
-            ),
+            timeout=settings.GROQ_TIMEOUT,
         )
 
-        self.model = os.getenv(
-            "GROQ_MODEL",
-            "llama-3.3-70b-versatile",
-        )
-
-        self.max_retries = int(
-            os.getenv("GROQ_MAX_RETRIES", "3")
-        )
-
-        self.base_retry_delay = float(
-            os.getenv("GROQ_RETRY_DELAY", "2")
-        )
+        self.model = settings.GROQ_MODEL
+        self.max_retries = settings.GROQ_MAX_RETRIES
+        self.base_retry_delay = settings.GROQ_RETRY_DELAY
 
     # ---------------------------------------------------------
     # Retry handling
@@ -212,5 +200,5 @@ class LLMProvider:
                 self._wait_before_retry(attempt)
 
         raise RuntimeError(
-            f"LLM JSON generation failed: {last_error}"
+            f"LLM generation failed: {last_error}"
         )

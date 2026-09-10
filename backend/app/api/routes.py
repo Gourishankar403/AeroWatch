@@ -9,9 +9,7 @@ from app.services.investigation_service import InvestigationService
 
 router = APIRouter()
 
-investigation_service = InvestigationService(
-    max_revisions=2,
-)
+investigation_service = InvestigationService()
 
 
 @router.post(
